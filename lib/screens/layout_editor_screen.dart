@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:mz_reservations/provider/store_provider.dart';
+import 'package:provider/provider.dart';
 import 'package:mz_reservations/models/layout_item.dart';
 import 'package:mz_reservations/utils/constants.dart';
 import 'package:mz_reservations/widgets/grid_painter.dart';
+import 'dart:math' as math;
 
 class CustomStoreLayoutEditor extends StatefulWidget {
   @override
@@ -13,6 +16,8 @@ class _CustomStoreLayoutEditorState extends State<CustomStoreLayoutEditor> {
   List<LayoutItem> layoutItems = [];
   String selectedItemType = 'table';
   String currentSection = '';
+  TransformationController _transformationController =
+      TransformationController();
 
   @override
   Widget build(BuildContext context) {
@@ -23,13 +28,14 @@ class _CustomStoreLayoutEditorState extends State<CustomStoreLayoutEditor> {
           Expanded(
             flex: 3,
             child: InteractiveViewer(
+              transformationController: _transformationController,
               boundaryMargin: EdgeInsets.all(20.0),
               minScale: 0.5,
               maxScale: 4.0,
               child: GestureDetector(
                 onTapUp: (details) {
-                  Offset gridPosition = _snapToGrid(details.localPosition);
-                  print('Tapped at grid position: $gridPosition');
+                  final Offset gridPosition =
+                      _getGridPosition(details.localPosition);
                   _showAddItemDialog(gridPosition);
                 },
                 child: Stack(
@@ -39,17 +45,14 @@ class _CustomStoreLayoutEditorState extends State<CustomStoreLayoutEditor> {
                       height: 2000,
                       color: Colors.grey[200],
                       child: CustomPaint(
-                        painter: GridPainter(),
+                        painter: GridPainter(gridSize: GRID_SIZE),
                       ),
                     ),
                     ...layoutItems.map((item) => Positioned(
                           left: item.position.dx,
                           top: item.position.dy,
                           child: GestureDetector(
-                            onTap: () {
-                              print('Item tapped: ${item.id}');
-                              _showEditItemDialog(item);
-                            },
+                            onTap: () => _showEditItemDialog(item),
                             child: _buildItem(item),
                           ),
                         )),
@@ -120,30 +123,29 @@ class _CustomStoreLayoutEditorState extends State<CustomStoreLayoutEditor> {
     showDialog(
       context: context,
       builder: (context) {
+        String name = '';
         int widthInGrids = 2;
         int heightInGrids = 2;
-        String name = '';
 
         return AlertDialog(
-          title: Text(selectedItemType == 'table' ? '테이블 추가' : '벽 추가'),
+          title: Text('아이템 추가'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               TextField(
-                decoration: InputDecoration(labelText: '너비 (격자 단위)'),
+                decoration: InputDecoration(labelText: '이름'),
+                onChanged: (value) => name = value,
+              ),
+              TextField(
+                decoration: InputDecoration(labelText: '너비'),
                 keyboardType: TextInputType.number,
                 onChanged: (value) => widthInGrids = int.tryParse(value) ?? 2,
               ),
               TextField(
-                decoration: InputDecoration(labelText: '높이 (격자 단위)'),
+                decoration: InputDecoration(labelText: '높이'),
                 keyboardType: TextInputType.number,
                 onChanged: (value) => heightInGrids = int.tryParse(value) ?? 2,
               ),
-              if (selectedItemType == 'table')
-                TextField(
-                  decoration: InputDecoration(labelText: '테이블 이름'),
-                  onChanged: (value) => name = value,
-                ),
             ],
           ),
           actions: [
@@ -155,12 +157,12 @@ class _CustomStoreLayoutEditorState extends State<CustomStoreLayoutEditor> {
               onPressed: () {
                 setState(() {
                   layoutItems.add(LayoutItem(
-                    type: selectedItemType,
-                    position: position,
                     id: DateTime.now().toString(),
+                    type: selectedItemType,
+                    name: name,
+                    position: position,
                     widthInGrids: widthInGrids,
                     heightInGrids: heightInGrids,
-                    name: name,
                   ));
                 });
                 Navigator.of(context).pop();
@@ -177,17 +179,22 @@ class _CustomStoreLayoutEditorState extends State<CustomStoreLayoutEditor> {
     showDialog(
       context: context,
       builder: (context) {
+        String name = item.name;
         int widthInGrids = item.widthInGrids;
         int heightInGrids = item.heightInGrids;
-        String name = item.name;
 
         return AlertDialog(
-          title: Text(item.type == 'table' ? '테이블 수정' : '벽 수정'),
+          title: Text('아이템 수정'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               TextField(
-                decoration: InputDecoration(labelText: '너비 (격자 단위)'),
+                decoration: InputDecoration(labelText: '이름'),
+                controller: TextEditingController(text: name),
+                onChanged: (value) => name = value,
+              ),
+              TextField(
+                decoration: InputDecoration(labelText: '너비'),
                 keyboardType: TextInputType.number,
                 controller:
                     TextEditingController(text: widthInGrids.toString()),
@@ -195,19 +202,13 @@ class _CustomStoreLayoutEditorState extends State<CustomStoreLayoutEditor> {
                     widthInGrids = int.tryParse(value) ?? widthInGrids,
               ),
               TextField(
-                decoration: InputDecoration(labelText: '높이 (격자 단위)'),
+                decoration: InputDecoration(labelText: '높이'),
                 keyboardType: TextInputType.number,
                 controller:
                     TextEditingController(text: heightInGrids.toString()),
                 onChanged: (value) =>
                     heightInGrids = int.tryParse(value) ?? heightInGrids,
               ),
-              if (item.type == 'table')
-                TextField(
-                  decoration: InputDecoration(labelText: '테이블 이름'),
-                  controller: TextEditingController(text: name),
-                  onChanged: (value) => name = value,
-                ),
             ],
           ),
           actions: [
@@ -222,12 +223,12 @@ class _CustomStoreLayoutEditorState extends State<CustomStoreLayoutEditor> {
                       .indexWhere((element) => element.id == item.id);
                   if (index != -1) {
                     layoutItems[index] = LayoutItem(
-                      type: item.type,
-                      position: item.position,
                       id: item.id,
+                      type: item.type,
+                      name: name,
+                      position: item.position,
                       widthInGrids: widthInGrids,
                       heightInGrids: heightInGrids,
-                      name: name,
                     );
                   }
                 });
@@ -250,7 +251,7 @@ class _CustomStoreLayoutEditorState extends State<CustomStoreLayoutEditor> {
     );
   }
 
-  void _saveLayout() async {
+  void _saveLayout() {
     if (currentSection.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('섹션 이름을 입력해주세요.')),
@@ -258,31 +259,24 @@ class _CustomStoreLayoutEditorState extends State<CustomStoreLayoutEditor> {
       return;
     }
 
-    // final supabase = Supabase.instance.client;
+    final storeProvider = Provider.of<StoreProvider>(context, listen: false);
+    storeProvider.addLayout(currentSection, List.from(layoutItems));
 
-    try {
-      // await supabase.from('layouts').insert({
-      //   'section': currentSection,
-      //   'items': layoutItems
-      //       .map((item) => {
-      //             'type': item.type,
-      //             'position_x': item.position.dx,
-      //             'position_y': item.position.dy,
-      //             'width_in_grids': item.widthInGrids,
-      //             'height_in_grids': item.heightInGrids,
-      //             'name': item.name,
-      //           })
-      //       .toList(),
-      // });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('레이아웃이 저장되었습니다.')),
+    );
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('레이아웃이 저장되었습니다.')),
-      );
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('저장 중 오류가 발생했습니다: $e')),
-      );
-    }
+    Navigator.pop(context); // 메인 화면으로 돌아가기
+  }
+
+  Offset _getGridPosition(Offset localPosition) {
+    final Matrix4 matrix = _transformationController.value;
+
+    final double scale = math.sqrt(matrix.entry(0, 0) * matrix.entry(0, 0) +
+        matrix.entry(0, 1) * matrix.entry(0, 1));
+    final double dx = (localPosition.dx - matrix.entry(0, 3)) / scale;
+    final double dy = (localPosition.dy - matrix.entry(1, 3)) / scale;
+    return _snapToGrid(Offset(dx, dy));
   }
 
   Offset _snapToGrid(Offset position) {
